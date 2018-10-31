@@ -70,6 +70,9 @@ def pcl_callback(pcl_msg):
     # Finally call the filter function for magic
     cloud_filtered = outlier_filter.filter()
 
+    # Publish to helper publisher
+    statistical_outlier_filtered_cloud.publish(pcl_to_ros(cloud_filtered))
+
     # TODO: Voxel Grid Downsampling
     # Create a VoxelGrid filter object for our input point cloud
     vox = cloud_filtered.make_voxel_grid_filter()
@@ -86,6 +89,9 @@ def pcl_callback(pcl_msg):
     cloud_filtered = vox.filter()
     # filename = 'voxel_downsampled.pcd'
     # pcl.save(cloud_filtered, filename)
+
+    # Publish to helper publisher
+    down_sampled_cloud.publish(pcl_to_ros(cloud_filtered))
 
     # TODO: PassThrough Filter
     # PassThrough filter
@@ -117,6 +123,9 @@ def pcl_callback(pcl_msg):
     cloud_filtered = passthrough.filter()
     # filename = 'pass_through_filtered.pcd'
     # pcl.save(cloud_filtered, filename)
+
+    # Publish to helper publisher
+    pass_through_filtered_cloud.publish(pcl_to_ros(cloud_filtered))
 
     # TODO: RANSAC Plane Segmentation
     # Create the segmentation object
@@ -255,7 +264,7 @@ def pr2_mover(object_list):
     yaml_dicts = []
 
     test_scene_num = Int32()
-    test_scene_num.data = 3
+    test_scene_num.data = rospy.get_param('/scene_num')
 
     object_name = String()
     arm_name = String()
@@ -264,11 +273,9 @@ def pr2_mover(object_list):
 
     # TODO: Get/Read parameters
     object_list_param = rospy.get_param('/object_list')
+    dropbox = rospy.get_param('/dropbox')
 
     # TODO: Parse parameters into individual variables
-    # for param in object_list_param:
-    #     object_names.append(param['name'])
-    #     object_groups.append(param['group'])
 
     # TODO: Rotate PR2 in place to capture side tables for the collision map
 
@@ -293,25 +300,26 @@ def pr2_mover(object_list):
                 pick_pose.orientation.w = 1.0
 
                 # TODO: Create 'place_pose' for the object
+                # TODO: Assign the arm to be used for pick_place
                 if param['group'] == 'green':
-                    place_pose.position.x = 0.0
-                    place_pose.position.y = -0.7
-                    place_pose.position.z = 1.0
+                    arm_name.data = 'right'
+                    for box in dropbox:
+                        if box['name'] == arm_name.data:
+                            place_pose.position.x = box['position'][0]
+                            place_pose.position.y = box['position'][1]
+                            place_pose.position.z = box['position'][2]
                 elif param['group'] == 'red':
-                    place_pose.position.x = 0.0
-                    place_pose.position.y = 0.7
-                    place_pose.position.z = 1.0
+                    arm_name.data = 'left'
+                    for box in dropbox:
+                        if box['name'] == arm_name.data:
+                            place_pose.position.x = box['position'][0]
+                            place_pose.position.y = box['position'][1]
+                            place_pose.position.z = box['position'][2]
 
                 place_pose.orientation.x = 0.0
                 place_pose.orientation.y = 0.0
                 place_pose.orientation.z = 0.0
                 place_pose.orientation.w = 1.0
-
-                # TODO: Assign the arm to be used for pick_place
-                if param['group'] == 'green':
-                    arm_name.data = 'right'
-                elif param['group'] == 'red':
-                    arm_name.data = 'left'
 
                 # TODO: Create a list of dictionaries (made with make_yaml_dict()) for later output to yaml format
                 yaml_dicts.append(make_yaml_dict(test_scene_num, arm_name, object_name, pick_pose, place_pose))
@@ -351,6 +359,11 @@ if __name__ == '__main__':
 
     object_markers_pub = rospy.Publisher("/object_markers", Marker, queue_size=1)
     detected_objects_pub = rospy.Publisher("/detected_objects", DetectedObjectsArray, queue_size=1)
+
+    # Helper publishers for assignment
+    statistical_outlier_filtered_cloud = rospy.Publisher("/so_filter", PointCloud2, queue_size=1)
+    down_sampled_cloud = rospy.Publisher("/down_sampled", PointCloud2, queue_size=1)
+    pass_through_filtered_cloud = rospy.Publisher("/pt_filter", PointCloud2, queue_size=1)
 
     # TODO: Load Model From disk
     model = pickle.load(open('model.sav', 'rb'))
